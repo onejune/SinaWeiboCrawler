@@ -13,10 +13,6 @@ from types import NoneType
 
 
 thread_data = {}
-time_now = time.strftime('%Y-%m-%d', time.localtime(time.time()))
-log_filename="./log/logging_" + time_now + '.log'
-log_format=' [%(asctime)s] [%(filename)s] [line:%(lineno)d] [%(funcName)s] [%(levelname)s] %(message)s'
-logging.basicConfig(format=log_format,datafmt='%Y-%m-%d %H:%M:%S %p',level=logging.DEBUG,filename=log_filename,filemode='a')
 
 
 def find_lcs_len(s1, s2): 

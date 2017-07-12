@@ -1,6 +1,9 @@
 #! /usr/bin/env python
 # -*- coding: utf-8 -*-
-import sys
+'''
+抓取一个用户的所有微博、评论
+'''
+import sys, os
 import urllib
 import urllib2
 import cookielib
@@ -8,18 +11,22 @@ import base64
 import re, time, datetime, json
 import hashlib,random
 from StringIO import StringIO
-import redis
 import gzip, traceback
 from bs4 import BeautifulSoup
 from bs4 import NavigableString
+from log_util import *
 
+time_now = time.strftime('%Y%m%d', time.localtime(time.time()))
+lf='./log/logging_crawl_weibo_' + time_now + '.log'
+logger = Logger(log_level=1, logger="crawler", log_file = lf).get_logger()
 
 class WeiboCrawler:
     def __init__(self):
-        proxy_file = "proxy.txt" 
+        proxy_file = "config/proxy.txt" 
         proxy_file = open(proxy_file, "r")
         self.proxy_list = self.LoadProxy(proxy_file)
-        
+        self.MAX_WEIBO_PAGE = 100
+        self.MAX_COMMENT_PAGE = 1000
         
     def downLoadPage(self, charset, req_url):  
         if req_url == '':
@@ -55,7 +62,7 @@ class WeiboCrawler:
                 data = response.read()
         except urllib2.URLError, e:
             #print url, e.reason
-            #logging.info(url + '\t' + str(e.reason))
+            #logger.info(url + '\t' + str(e.reason))
             pass
         return data
 
@@ -211,7 +218,7 @@ class WeiboCrawler:
         content = response.read()
         #print content
         start = content.find('$CONFIG[\'page_id\']=')
-        print start
+      
         if start == -1:
             return None
         end = content.find('\'', start + 22)
@@ -219,6 +226,7 @@ class WeiboCrawler:
             return None
         uid = content[start + 20 : end]
         return uid
+    
     
     def get_read_num(self, url):
         request = urllib2.Request(url) 
@@ -460,9 +468,9 @@ class WeiboCrawler:
         div_str = div_str.replace('\r', '')
         div_str = div_str.replace('\n', '')
         content = div_str.replace('\\', '')
-        
         #print content
-        res = re.findall(r'CONFIG\[\'page_id\'\]=\'([^\']+)', content)
+        #print content
+        res = re.findall(r'CONFIG\[\'page_id\']=\'([^\']+)', content)
         if len(res) == 0:
             return None, None, None
         page_id = res[0]
@@ -470,67 +478,107 @@ class WeiboCrawler:
         res = re.findall(r'CONFIG\[\'title_value\'\]=\'([^\']+)', content)
         if len(res) == 0:
             return None, None, None
-        weibo_name = res[0]
+        weibo_name = res[0].split('_')[0]
         
+        pid = ''
         res = re.findall(r'CONFIG\[\'pid\'\]=\'([^\']+)', content)
         if len(res) == 0:
-            return None, None, None
-        pid = res[0]
+            res = re.findall(r'CONFIG\[\'domain\'\]=\'([^\']+)', content)
+            if len(res) != 0:
+                pid = res[0]
+            else:
+                pid = page_id[0:6]
+        else:
+            pid = res[0]
         print 'page id:', page_id, 'weibo name:', weibo_name, 'pid:', pid
         return page_id, weibo_name, pid
     
     
-    #抓取其他人的主页微博
-    def get_homepage_weibo(self, home_page_url):
-        weibo_list = []
-
-        #第一次抓取，首页第一屏
-        req = urllib2.Request(home_page_url)
-        result = urllib2.urlopen(req).read()
-        #print result
-        #获取页面信息
-        page_id, weibo_name, pid = self.get_page_info(result)
-        
-        weibo_list, mid1, mid2 = self.extract_weibo_info_from_homepage(result)
-
-        if weibo_list == None:
-            return None
-        end_mid = mid1
-        min_mid = mid2
-        
+    def load_crawled_wid(self, uid):
+        if not uid:
+            return {}
+        p = './output/' + uid +  '/' + uid + '_weibo.dat'
+        if not os.path.exists(p):
+            return {}
+        wid_dict = {}
+        fin = open(p)
+        for line in fin:
+            arr = line.split('\t')
+            wid = arr[0].strip()
+            wid_dict[wid] = 1
+        fin.close()
+        return wid_dict
+    
+    #抓取一个用户的所有微博
+    def crawl_all_weibo_by_uid(self, home_page_url):
         page = 1
         pre_page = 1
         page_bar = 0
-        
+        uid = ''
+        weibo_list = []
+        #第一次抓取，首页第一屏
+        req = urllib2.Request(home_page_url)
+        try:
+            result = urllib2.urlopen(req, timeout = 10).read()
+        except:
+            return None, None, None
+        #获取页面信息
+        uid, weibo_name, pid = self.get_page_info(result)
+      
+        weibo_list = self.extract_weibo_info_from_homepage(result)
+        if weibo_list == None:
+            return weibo_list, uid, weibo_name
         req_url = 'http://weibo.com/p/aj/v6/mblog/mbloglist?ajwvr=6&domain=%s&domain_op=%s&id=%s&pre_page=%s&page=%s&pagebar=%s'
-        
         #抓5页
-        while page < 5:
+        while page < self.MAX_WEIBO_PAGE:
+            cnt = 0
             page_bar = 0
             #每一页抓3屏
             while page_bar < 3:
-                print '==========================================='
-                print 'page:', page, ' page_bar:', page_bar
-                url = req_url % (pid, pid, page_id, pre_page, page, page_bar)
-                print url
+                #print 'page:', page, ' page_bar:', page_bar
+                url = req_url % (pid, pid, uid, pre_page, page, page_bar)
                 req = urllib2.Request(url)
                 try:
-                    result = urllib2.urlopen(req).read().decode("unicode-escape")
-                    #print '1:', result
+                    result = urllib2.urlopen(req, timeout = 10).read()
                 except:
-                    continue
+                    traceback.print_exc()
+                    break
                 
                 #tmp_list, mid1, mid2 = self.extract_weibo_info(result)
-                tmp_list, mid1, mid2 = self.extract_weibo_info_from_json(result)
-
-                if len(tmp_list) == 0:
+                tmp_list = self.extract_weibo_info_from_json(result)
+                cnt += len(tmp_list)
+                if not tmp_list:
                     break
+                print 'crawled', len(tmp_list), 'weibo in', url
                 weibo_list += tmp_list
-                
                 page_bar += 1
+            if cnt == 0:
+                break
             page += 1
-        print 'crawled', len(weibo_list), 'weibo in', weibo_name
-        return weibo_list, weibo_name
+        print 'crawled', page, 'pages,', len(weibo_list), 'weibo in', weibo_name
+        logger.info('crawled ' +  str(page) + ' pages,' + str(len(weibo_list)) + ' weibo for ' + str(weibo_name))
+        return weibo_list, uid, weibo_name
+        
+    
+    #抓取微博
+    def crawl_user_weibo(self, home_page_url):
+        logger.info('get weibo for ' + home_page_url)
+        new_weibo_list = []
+        weibo_list, uid, weibo_name = self.crawl_all_weibo_by_uid(home_page_url)
+        logger.info('get uid:' + str(uid) + ' weibo_name:' + str(weibo_name))
+        self.home_url = home_page_url
+        self.uid = uid
+        self.weibo_name = weibo_name
+        if weibo_list and uid and weibo_name:
+            crawled_wid_dict = self.load_crawled_wid(uid) #已经抓取过的weibo id
+            for weibo in weibo_list:
+                wid = weibo['id']
+                if wid not in crawled_wid_dict:
+                    new_weibo_list.append(weibo)
+            self.save_weibo(new_weibo_list)
+        print 'crawled ' + str(len(new_weibo_list)) + ' new weibo for user ' + str(self.uid)
+        logger.info('crawled ' + str(len(new_weibo_list)) + ' new weibo for user ' + str(self.uid))
+        return weibo_list
     
     
     def extract_weibo_info_from_homepage(self, content):
@@ -597,7 +645,7 @@ class WeiboCrawler:
                             start_mid = mid
                         #print mid
                     except:
-                        traceback.print_exc()
+                        #traceback.print_exc()
                         continue
             #get weibo
             start = content.find('<div class="WB_text W_f14" node-type="feed_list_content"', end)
@@ -611,6 +659,7 @@ class WeiboCrawler:
             weibo_text = content[start: end + 6]           
             soup = BeautifulSoup(weibo_text)
             weibo_text = soup.text.strip()
+            weibo_text = ' '.join(weibo_text.split())
 
             weibo_dict['content'] = weibo_text
             weibo_dict['id'] = mid
@@ -620,143 +669,102 @@ class WeiboCrawler:
                 weibo_dict['url'] =  weibo_url
             
             weibo_list.append(weibo_dict)
-            
-            print i, mid, weibo_url, weibo_text.decode('utf-8')
+            #print i, mid, weibo_url, weibo_text.decode('utf-8')
             start = end + 6
             i += 1
             
         end_mid = mid
-        return weibo_list, start_mid, end_mid
+        return weibo_list
+    
+    
+    def clear_content(self, content):
+        content = content.decode("unicode-escape")
+        div_str = content.replace('\t', '')
+        div_str = div_str.replace('\r', '')
+        div_str = div_str.replace('\n', '')
+        content = div_str.replace('\\', '')
+        return content
     
     #抓取翻页的或者翻屏微博
     def extract_weibo_info_from_json(self, content):
         if content == None or len(content) == 0:
             print 'content is null'
             return None, None, None
-        #print content       
-        div_str = content.replace('\t', '')
-        div_str = div_str.replace('\r', '')
-        div_str = div_str.replace('\n', '')
-        content = div_str.replace('\\', '')
-        
-        start = 0
-        i = 1
-        nick_name = ''
+        content = self.clear_content(content)
+         
         weibo_list = []
         weibo_dict = {}
-        mid = ''
-        start_mid = ''
-        end_mid = ''
-        page = 0
-        pre_page = 0
-        page_bar = 0
-        
-        while start != -1:
-            news_time = ''
-            weibo_url = ''
-            nick_name = ''
-            weibo_text = ''
-            forward_text = ''
+        div_tags = BeautifulSoup(content).find_all('div', attrs={"action-type": "feed_list_item"})
+        if not div_tags:
+            return weibo_list
+        for tag in div_tags:
+            mid = tag.attrs.get('mid')
+            if not mid:
+                continue
+            #print 'mid:', mid
+            items = tag.find(name = 'div', attrs={"class": "WB_text W_f14", "node-type": "feed_list_content"})
+            if items:
+                weibo_text = items.text.strip()
+                weibo_text = ' '.join(weibo_text.split())
+            else:
+                weibo_text = ''
+            #print weibo_text
             weibo_dict = {}
-            #print content
-            start = content.find('<div class="WB_from S_txt2">', start)
-      
-            if start == -1:
-                break
-            end = content.find('</div>', start)
-            if end == -1:
-                break
-            time_str = content[start: end + 6]
-            #print time_str
-            soup = BeautifulSoup(time_str)
-            tags = soup.find_all('a')
-            for tag in tags:
-                if 'date' in tag.attrs:
-                    try:
-                        news_time = tag.attrs['date'][0:-3]
-                        tt = float(news_time)
-                        x = time.localtime(tt)
-                        x = time.strftime('%Y-%m-%d %H:%M:%S', x)
-                        news_time = x
-                        weibo_url = 'http://weibo.com' + tag.attrs['href']
-                        mid = tag.attrs.get('name')
-                        if mid == None:
-                            continue
-                        if start_mid == '':
-                            start_mid = mid
-                        #print mid
-                    except:
-                        traceback.print_exc()
-                        continue
-            #get weibo
-            start = content.find('<div class="WB_text W_f14" node-type="feed_list_content"', end)
-            #print start
-            if start == -1:
-                break
-            end = content.find('</div>', start)
-            if end == -1:
-                break
-            
-            weibo_text = content[start: end + 6]           
-            soup = BeautifulSoup(weibo_text)
-            weibo_text = soup.text.strip()
-
             weibo_dict['content'] = weibo_text
             weibo_dict['id'] = mid
-
-            if weibo_url != '':
-                weibo_url = weibo_url.split('?')[0]
-                weibo_dict['url'] =  weibo_url
-            
             weibo_list.append(weibo_dict)
-            
-            print i, mid, weibo_url, weibo_text.decode('utf-8')
-            start = end + 6
-            i += 1
-            
-        end_mid = mid
-        return weibo_list, start_mid, end_mid
+        return weibo_list
     
     
-    def get_weibo_comment(self, weibo_list, weibo_name):
+    def is_wid_crawled(self, wid):
+        p = './output/' + self.uid + '/' + wid + '_comment.dat'
+        if os.path.exists(p):
+            return True
+        else:
+            return False
+    
+    
+    def crawl_weibo_comment(self, weibo_list):
         weibo_comment = {}
+        cnt = 0
         for weibo in weibo_list:
             wid = weibo['id']
             if wid in weibo_comment:
+                continue
+            #判断是否已经抓过该微博的评论
+            if self.is_wid_crawled(wid):
                 continue
             cmt_list = self.get_comment_by_mid(wid)
             if not cmt_list:
                 continue
             weibo_comment[wid] = cmt_list
-            self.save_cmt(cmt_list, weibo_name, wid)
-        return weibo_comment
+            self.save_cmt(cmt_list, wid)
+            cnt += len(cmt_list)
+        return cnt
     
     #根据指定 的weibo id抓取评论
     def get_comment_by_mid(self, mid):
         if not mid:
             return []
         cmt_list = []
-        #mid = '4125365746092545'
         page = 1
-        while 1:
-            req_url = 'http://weibo.com/aj/v6/comment/big?ajwvr=6&id=%s&root_comment_ext_param=&page=%d&filter=hot' % (mid, page)
+        while page < self.MAX_COMMENT_PAGE:
+            req_url = 'http://weibo.com/aj/v6/comment/big?ajwvr=6&id=%s&root_comment_ext_param=&page=%d&filter=hot&filter_tips_before=1&from=singleWeiBo' % (mid, page)
             req = urllib2.Request(req_url)
             try:
-                content = urllib2.urlopen(req).read().decode("unicode-escape")
+                content = urllib2.urlopen(req, timeout=10).read().decode("unicode-escape")
             except:
-                break
-            #print '1:', result
+                time.sleep(10)
+                continue
             div_str = content.replace('\t', '')
             div_str = div_str.replace('\r', '')
             div_str = div_str.replace('\n', '')
             content = div_str.replace('\\', '')
-            print req_url
             
             start = content.find('<div')
             end = content.rfind('</div>')
             if end <= start:
                 break
-            #print start, end, content
             content = content[start: end].strip()
             soup = BeautifulSoup(content)
             tags = soup.find_all(name = 'div', attrs = {'class':'WB_text'})
@@ -768,18 +776,41 @@ class WeiboCrawler:
                 cmt_list.append(cmt)
                 #print cmt
             page += 1
-        print 'crawled', len(cmt_list), 'for', mid
+        print 'crawled', len(cmt_list), 'comment for', mid
+        logger.info('crawler ' + str(len(cmt_list)) + ' comments for ' + str(mid))
         return cmt_list
         
         
-    def save_cmt(self, weibo_comment, weibo_name, wid):
+    def save_cmt(self, weibo_comment, wid):
         time_now = time.strftime('%Y%m%d', time.localtime(time.time()))
-        fout = open('./result/weibo_comment_' + time_now + '.dat', 'a')
+        p = './output/' + self.uid
+        if not os.path.exists(p):
+            os.makedirs(p)
+        fout = open(p  + '/' + wid + '_comment.dat', 'a')
         for cmt in weibo_comment:
-            fout.write(weibo_name + '\t' + wid + '\t' + cmt + '\n')
+            if self.weibo_name and wid and cmt:
+                fout.write(wid + '\t' + cmt + '\n')
         fout.close()
         
         
+    def save_weibo(self, weibo_list):
+        time_now = time.strftime('%Y%m%d', time.localtime(time.time()))
+        p = './output/' + self.uid 
+        if not os.path.exists(p):
+            os.makedirs(p)
+        fout = open(p + '/' + self.uid + '_weibo.dat', 'a')
+        for weibo in weibo_list:
+            if weibo['id'] and weibo['content']:
+                fout.write(weibo['id'] + '\t' + weibo['content'] + '\n')
+        fout.close()
+    
+    def save_user(self, weibo_cnt, cmt_cnt):
+        time_now = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))
+        p = './output/weibo_user.dat'
+        fout = open(p, 'a')
+        fout.write(self.uid + '\t' + self.home_url + '\t' + self.weibo_name + '\t' + str(weibo_cnt) + '\t' + str(cmt_cnt) + '\t' + time_now + '\n')
+        fout.close()
+    
         
     def weibo_search(self, keyword):
         weibo_list = []
@@ -815,7 +846,7 @@ class WeiboCrawler:
                 #print tag.get('nick-name'), '----', tag.text
             page += 1
             if page % 3 == 0:
-                time.sleep(5)
+                time.sleep(1)
             
         print 'searched', len(weibo_list), 'weibo.'
         

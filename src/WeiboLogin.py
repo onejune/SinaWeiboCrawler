@@ -9,15 +9,20 @@ import base64
 import re
 import json
 import hashlib, traceback
-
 import WeiboEncode
 import WeiboSearch
+from log_util import *
+
+
+time_now = time.strftime('%Y%m%d', time.localtime(time.time()))
+lf='./log/logging_login_' + time_now + '.log'
+logger = Logger(log_level=1, logger="login", log_file = lf).get_logger()
 
 class WeiboLogin:
     def __init__(self, account, enableProxy = False):
         "初始化WeiboLogin，enableProxy表示是否使用代理服务器，默认关闭"
         
-        print "Initializing WeiboLogin..."
+        logger.info("Initializing WeiboLogin...")
         user, pwd, url = account
         self.userName = user
         self.passWord = pwd
@@ -28,7 +33,7 @@ class WeiboLogin:
         self.loginUrl = "http://login.sina.com.cn/sso/login.php?client=ssologin.js(v1.4.11)"
         self.postHeader = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; rv:24.0) Gecko/20100101 Firefox/24.0'}
         
-        proxy_file = "proxy.txt" 
+        proxy_file = "config/proxy.txt" 
         proxy_file = open(proxy_file, "r")
         proxy_list = self.LoadProxy(proxy_file)
         proxy_num = len(proxy_list)
@@ -55,7 +60,8 @@ class WeiboLogin:
         return proxyList
 
 
-    def get_account(self,filename):  
+    def get_account(self, filename):
+        account_list = []
         f = open(filename)  
         username = ''
         pwd = ''
@@ -64,8 +70,9 @@ class WeiboLogin:
             username = arr[0]
             pwd = arr[1]
             url = arr[2]
+            account_list.append((username, pwd, url))
         f.close()
-        return username, pwd, url
+        return account_list
     
     
     def get_home_page_url(self):
@@ -99,10 +106,12 @@ class WeiboLogin:
             #print final
         except:
             print 'Login error!'
+            logger.error('login error for ' + self.userName)
             print traceback.print_exc()
             return False
 
         print self.userName, 'Login sucess!'
+        logger.error('login successfully for ' + self.userName)
         return True
     
     
