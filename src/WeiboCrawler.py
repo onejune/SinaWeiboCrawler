@@ -26,7 +26,7 @@ class WeiboCrawler:
         proxy_file = open(proxy_file, "r")
         self.proxy_list = self.LoadProxy(proxy_file)
         self.MAX_WEIBO_PAGE = 100
-        self.MAX_COMMENT_PAGE = 1000
+        self.MAX_COMMENT_PAGE = 100
         
     def downLoadPage(self, charset, req_url):  
         if req_url == '':
@@ -213,9 +213,12 @@ class WeiboCrawler:
     
     
     def get_uid_by_url(self, url):
-        request = urllib2.Request(url) 
-        response = urllib2.urlopen(request,timeout=500)
-        content = response.read()
+        try:
+            request = urllib2.Request(url) 
+            response = urllib2.urlopen(request,timeout=500)
+            content = response.read()
+        except:
+            return None
         #print content
         start = content.find('$CONFIG[\'page_id\']=')
       
@@ -521,8 +524,10 @@ class WeiboCrawler:
         try:
             result = urllib2.urlopen(req, timeout = 10).read()
         except:
+            traceback.print_exc()
             return None, None, None
         #获取页面信息
+        #print result
         uid, weibo_name, pid = self.get_page_info(result)
       
         weibo_list = self.extract_weibo_info_from_homepage(result)
@@ -549,13 +554,13 @@ class WeiboCrawler:
                 cnt += len(tmp_list)
                 if not tmp_list:
                     break
-                print 'crawled', len(tmp_list), 'weibo in', url
+                #print 'crawled', len(tmp_list), 'weibo in', url
                 weibo_list += tmp_list
                 page_bar += 1
             if cnt == 0:
                 break
             page += 1
-        print 'crawled', page, 'pages,', len(weibo_list), 'weibo in', weibo_name
+        print 'crawled', page, 'pages,', len(weibo_list), 'weibo in', weibo_name, home_page_url
         logger.info('crawled ' +  str(page) + ' pages,' + str(len(weibo_list)) + ' weibo for ' + str(weibo_name))
         return weibo_list, uid, weibo_name
         
@@ -575,9 +580,10 @@ class WeiboCrawler:
                 wid = weibo['id']
                 if wid not in crawled_wid_dict:
                     new_weibo_list.append(weibo)
+                    crawled_wid_dict[wid] = 1
             self.save_weibo(new_weibo_list)
-        print 'crawled ' + str(len(new_weibo_list)) + ' new weibo for user ' + str(self.uid)
-        logger.info('crawled ' + str(len(new_weibo_list)) + ' new weibo for user ' + str(self.uid))
+            print 'crawled ' + str(len(new_weibo_list)) + ' new weibo for user ' + str(self.uid) + ' , the url is:' + home_page_url
+            logger.info('crawled ' + str(len(new_weibo_list)) + ' new weibo for user ' + str(self.uid) + ', the url is:' + home_page_url)
         return weibo_list
     
     
@@ -725,6 +731,8 @@ class WeiboCrawler:
     
     
     def crawl_weibo_comment(self, weibo_list):
+        if not weibo_list:
+            return 0
         weibo_comment = {}
         cnt = 0
         for weibo in weibo_list:
@@ -755,6 +763,8 @@ class WeiboCrawler:
                 content = urllib2.urlopen(req, timeout=10).read().decode("unicode-escape")
             except:
                 time.sleep(10)
+                print 'except for:', req_url
+                page += 1
                 continue
             div_str = content.replace('\t', '')
             div_str = div_str.replace('\r', '')
@@ -772,7 +782,7 @@ class WeiboCrawler:
                 break
             for tag in tags:
                 cmt = tag.text
-                cmt = cmt.strip()
+                cmt = cmt.strip().replace('\t', '')
                 cmt_list.append(cmt)
                 #print cmt
             page += 1

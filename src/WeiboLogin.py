@@ -23,12 +23,12 @@ class WeiboLogin:
         "初始化WeiboLogin，enableProxy表示是否使用代理服务器，默认关闭"
         
         logger.info("Initializing WeiboLogin...")
-        user, pwd, url = account
+        user, pwd = account
         self.userName = user
         self.passWord = pwd
-        self.home_page_url = url
+        self.home_page_url = ''
         self.enableProxy = enableProxy
-
+        print 'start login with:', user
         self.serverUrl = "http://login.sina.com.cn/sso/prelogin.php?entry=weibo&callback=sinaSSOController.preloginCallBack&su=&rsakt=mod&client=ssologin.js(v1.4.11)&_=1379834957683"
         self.loginUrl = "http://login.sina.com.cn/sso/login.php?client=ssologin.js(v1.4.11)"
         self.postHeader = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; rv:24.0) Gecko/20100101 Firefox/24.0'}
@@ -40,12 +40,12 @@ class WeiboLogin:
         
         proxy_selected = random.randint(0, proxy_num-1)
         proxy_this = proxy_list[proxy_selected]
-        proxy_handler = urllib2.ProxyHandler({'http':'http://' + proxy_this +':50180'})
+        proxy_handler = urllib2.ProxyHandler({'http':'http://' + proxy_this})
         print 'proxy:', proxy_this
         
         null_proxy_handler = urllib2.ProxyHandler({})
-        enable_proxy = False
-        if enable_proxy:
+  
+        if enableProxy:
             opener = urllib2.build_opener(proxy_handler)
         else:
             opener = urllib2.build_opener(null_proxy_handler)
@@ -110,7 +110,9 @@ class WeiboLogin:
             print traceback.print_exc()
             return False
 
+        print '************************'
         print self.userName, 'Login sucess!'
+        print '************************'
         logger.error('login successfully for ' + self.userName)
         return True
     
