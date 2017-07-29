@@ -5,7 +5,8 @@
 '''
 import urllib2, time, datetime, sys, os, redis, random, types
 import cookielib, traceback
-from WeiboLogin import *
+#from WeiboLogin import *
+from WeiboLogin2 import *
 from login import *
 from WeiboCrawler import *
 from get_weibo_page import *
@@ -66,7 +67,7 @@ def get_account():
     for line in f:  
         arr = line.split('\t')
         if len(arr) < 2:
-            continue
+            break
         username = arr[0]
         pwd = arr[1]
         account_list.append((username, pwd))
@@ -136,12 +137,12 @@ def get_crawl_url():
             continue
         cmt_cnt = crawled_count.get(uid)
         if not cmt_cnt:
-            crawl_queue.append((name, nickname, url, uid, 0, 0))
+            #crawl_queue.append((name, nickname, url, uid, 0, 0))
             continue
         d = cmt_cnt.split('\t')
         weibo_cnt = int(d[0])
         cmt_cnt = int(d[1])
-        if cmt_cnt < 200000:
+        if cmt_cnt < 500000:
             crawl_queue.append((name, nickname, url, uid, weibo_cnt, cmt_cnt))
     random.shuffle(crawl_queue) 
     return crawl_queue
@@ -164,60 +165,75 @@ if __name__ == "__main__":
     init()
     read_config()
     print 'redis config:',const.HOST, const.PORT   
-    redis_server = redis.Redis(host = const.HOST, port = const.PORT, db = 1)
-    redis_monitor = redis.Redis(host= const.HOST, port = const.PORT, db = 2)
+    redis_server = redis.Redis(host = const.HOST, port = const.PORT, db = 1, password='wanjun@1#7%sider')
+    redis_monitor = redis.Redis(host= const.HOST, port = const.PORT, db = 2, password='wanjun@1#7%sider')
 
-    #load all bigV home url which crawled from baidu.
-    all_user_url = get_crawl_url()
-    all_user_url.sort(key = lambda d:d[5], reverse = True)
-    
-    
-    print 'load', len(all_user_url), 'user urls.'
-    logger.info('load ' + str(len(all_user_url)) + ' user urls.')
-    #load all bigV uid.
-    old_user_dict = load_all_user()
-    new_user_list = []
-    
-    weiboCrawler = WeiboCrawler()
-    account = get_account()
-    print 'start running....'
-    logger.info('start running.')
-    weiboLogin = WeiboLogin(account)
-    if weiboLogin.Login() == False:
-        exit()
-
-    #抓其他人的主页微博
-    start_time = datetime.datetime.now()
-    w_cnt = 0
-    c_cnt = 0
-    for data in all_user_url:
-        name, nickname, home_url, uid, weibo_cnt, cmt_cnt = data
-
-        logger.info('start crawl:' + str(uid) + '\t' + str(weibo_cnt) + '\t' + str(cmt_cnt))
-        print 'start crawl:' + str(uid), '\t', home_url, '\t', weibo_cnt, '\t', cmt_cnt
-        try:
-            weibo_list = weiboCrawler.crawl_user_weibo(home_url)
-            cmt_cnt = weiboCrawler.crawl_weibo_comment(weibo_list)
-            if cmt_cnt == 0:
-                time.sleep(10)
-            weibo_cnt = len(weibo_list)
-            w_cnt += weibo_cnt
-            c_cnt += cmt_cnt
-        except:
-            traceback.print_exc()
-            time.sleep(300)
+    #login in and get cookies
+    print 'start login....'
+    print '--------------- start login --------------'
+    while 1:
+        account = get_account()
+        logger.info('start login....')
+        weiboLogin = WeiboLogin2(account)
+        if weiboLogin.Login() == False:
+            #time.sleep(30)
             continue
-        #save user uid
-        if uid:
-            weiboCrawler.save_user(weibo_cnt, cmt_cnt)
-            old_user_dict[uid] = nickname
+        else:
+            break
+    print '---------------- login success -----------------'    
+    print '---------------- start crawl -------------------'
         
-    end_time = datetime.datetime.now()
-    waste = (end_time - start_time).seconds * 1.0 / 3600
-    print 'crawl weibo over, spend', waste, 'hour.', 'crawled users:', len(all_user_url), 'all weibo count:', w_cnt, 'all comment count:', c_cnt
-    logger.info('crawl weibo over, spend ' + str(waste) + 'hours.')
+    while 1:
+        #load all bigV home url which crawled from baidu.
+        all_user_url = get_crawl_url()
+        #all_user_url.sort(key = lambda d:d[5], reverse = True)
         
-    print 'crawl completely......'
+        if len(all_user_url) < 10:
+            break
+        
+        print 'load', len(all_user_url), 'user urls from redis.'
+        logger.info('load ' + str(len(all_user_url)) + ' user urls.')
+        #load all bigV uid.
+        old_user_dict = load_all_user()
+        new_user_list = []
+        
+        weiboCrawler = WeiboCrawler()
+    
+        #抓其他人的主页微博
+        start_time = datetime.datetime.now()
+        w_cnt = 0
+        c_cnt = 0
+        for data in all_user_url:
+            name, nickname, home_url, uid, weibo_cnt, cmt_cnt = data
+    
+            logger.info('start crawl:' + str(uid) + '\t' + str(weibo_cnt) + '\t' + str(cmt_cnt))
+            print 'start crawl:' + str(uid), '\t', home_url, '\t', weibo_cnt, '\t', cmt_cnt
+            try:
+                weibo_list = weiboCrawler.crawl_user_weibo(home_url)
+                if not weibo_list:
+                    continue
+                cmt_cnt = weiboCrawler.crawl_weibo_comment(weibo_list)
+                if cmt_cnt == 0:
+                    time.sleep(10)
+                weibo_cnt = len(weibo_list)
+                w_cnt += weibo_cnt
+                c_cnt += cmt_cnt
+            except:
+                traceback.print_exc()
+                time.sleep(300)
+                continue
+            #save user uid
+            if uid:
+                weiboCrawler.save_user(weibo_cnt, cmt_cnt)
+                old_user_dict[uid] = nickname
+            
+        end_time = datetime.datetime.now()
+        waste = (end_time - start_time).seconds * 1.0 / 3600
+        print 'crawl weibo over, spend', waste, 'hour.', 'crawled users:', len(all_user_url), 'all weibo count:', w_cnt, 'all comment count:', c_cnt
+        logger.info('crawl weibo over, spend ' + str(waste) + 'hours.')
+            
+        print 'crawl completely......'
+        time.sleep(1800)
 
     
     

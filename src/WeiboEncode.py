@@ -8,8 +8,8 @@ import binascii
 def PostEncode(userName, passWord, serverTime, nonce, pubkey, rsakv):
     "Used to generate POST data"
 
-    encodedUserName = GetUserName(userName)#ÓÃ»§ÃûÊ¹ÓÃbase64¼ÓÃÜ
-    encodedPassWord = get_pwd(passWord, serverTime, nonce, pubkey)#Ä¿Ç°ÃÜÂë²ÉÓÃrsa¼ÓÃÜ
+    encodedUserName = GetUserName(userName)#ï¿½Ã»ï¿½ï¿½ï¿½Ê¹ï¿½ï¿½base64ï¿½ï¿½ï¿½ï¿½
+    encodedPassWord = get_pwd(passWord, serverTime, nonce, pubkey)#Ä¿Ç°ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½rsaï¿½ï¿½ï¿½ï¿½
     postPara = {
         'entry': 'weibo',
         'gateway': '1',
@@ -28,10 +28,11 @@ def PostEncode(userName, passWord, serverTime, nonce, pubkey, rsakv):
         'encoding': 'UTF-8',
         'prelt': '115',
         'rsakv': rsakv,     
+        'door': '2341',
         'url': 'http://weibo.com/ajaxlogin.php?framelogin=1&callback=parent.sinaSSOController.feedBackUrlCallBack',
         'returntype': 'META'
     }
-    postData = urllib.urlencode(postPara)#ÍøÂç±àÂë
+    postData = urllib.urlencode(postPara)#ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
     return postData
 
 
@@ -45,9 +46,9 @@ def GetUserName(userName):
 
 def get_pwd(password, servertime, nonce, pubkey):
     rsaPublickey = int(pubkey, 16)
-    key = rsa.PublicKey(rsaPublickey, 65537) #´´½¨¹«Ô¿
-    message = str(servertime) + '\t' + str(nonce) + '\n' + str(password) #Æ´½ÓÃ÷ÎÄjs¼ÓÃÜÎÄ¼þÖÐµÃµ½
-    passwd = rsa.encrypt(message, key) #¼ÓÃÜ
-    passwd = binascii.b2a_hex(passwd) #½«¼ÓÃÜÐÅÏ¢×ª»»Îª16½øÖÆ¡£
+    key = rsa.PublicKey(rsaPublickey, 65537) #ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ô¿
+    message = str(servertime) + '\t' + str(nonce) + '\n' + str(password) #Æ´ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½jsï¿½ï¿½ï¿½ï¿½ï¿½Ä¼ï¿½ï¿½ÐµÃµï¿½
+    passwd = rsa.encrypt(message, key) #ï¿½ï¿½ï¿½ï¿½
+    passwd = binascii.b2a_hex(passwd) #ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï¢×ªï¿½ï¿½Îª16ï¿½ï¿½ï¿½Æ¡ï¿½
     return passwd
 

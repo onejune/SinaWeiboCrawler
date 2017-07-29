@@ -1,7 +1,7 @@
 #! /usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import sys
+import sys, requests
 from urllib import *
 import urllib2, urllib, random
 import cookielib
@@ -12,7 +12,7 @@ import hashlib, traceback
 import WeiboEncode
 import WeiboSearch
 from log_util import *
-
+from urllib import unquote
 
 time_now = time.strftime('%Y%m%d', time.localtime(time.time()))
 lf='./log/logging_login_' + time_now + '.log'
@@ -29,9 +29,9 @@ class WeiboLogin:
         self.home_page_url = ''
         self.enableProxy = enableProxy
         print 'start login with:', user
-        self.serverUrl = "http://login.sina.com.cn/sso/prelogin.php?entry=weibo&callback=sinaSSOController.preloginCallBack&su=&rsakt=mod&client=ssologin.js(v1.4.11)&_=1379834957683"
-        self.loginUrl = "http://login.sina.com.cn/sso/login.php?client=ssologin.js(v1.4.11)"
-        self.postHeader = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; rv:24.0) Gecko/20100101 Firefox/24.0'}
+        self.serverUrl = "http://login.sina.com.cn/sso/prelogin.php?entry=weibo&callback=sinaSSOController.preloginCallBack&su=&rsakt=mod&client=ssologin.js(v1.4.15)"
+        self.loginUrl = "http://login.sina.com.cn/sso/login.php?client=ssologin.js(v1.4.15)"
+        self.postHeader = {'User-Agent': 'Mozilla/5.0 (X11; Linux i686; rv:8.0) Gecko/20100101 Firefox/8.0'}
         
         proxy_file = "config/proxy.txt" 
         proxy_file = open(proxy_file, "r")
@@ -81,19 +81,22 @@ class WeiboLogin:
 
     def Login(self):
         "登陆程序"  
-        self.EnableCookie(self.enableProxy)#cookie或代理服务器配置
-
+        self.EnableCookie(self.enableProxy)#cookie或代理服务器配置        
         serverTime, nonce, pubkey, rsakv = self.GetServerTime()#登陆的第一步
         postData = WeiboEncode.PostEncode(self.userName, self.passWord, serverTime, nonce, pubkey, rsakv)#加密用户和密码
         print "Post data length:", len(postData)
+        print postData
 
         req = urllib2.Request(self.loginUrl, postData, self.postHeader)
         print "Posting request..."
         result = urllib2.urlopen(req)#登陆的第二步——解析新浪微博的登录过程中3
         text = result.read().decode('GBK')
-        #print text
+        print '===================='
+        print text
+        print '===================='
         try:
             login_url = WeiboSearch.sRedirectData(text)#解析重定位结果
+            print 'login_url:', login_url
             #request = urllib.request.Request(login_url)
             response = urllib2.urlopen(login_url)
             page = response.read().decode('GBK')
@@ -105,7 +108,9 @@ class WeiboLogin:
             final = response.read().decode('utf-8')
             #print final
         except:
-            print 'Login error!'
+            start = login_url.rfind('reason=')
+            reason = login_url[start + 7:]
+            print 'Login error:', unquote(reason.encode('utf-8')).decode('gbk')
             logger.error('login error for ' + self.userName)
             print traceback.print_exc()
             return False
@@ -116,7 +121,7 @@ class WeiboLogin:
         logger.error('login successfully for ' + self.userName)
         return True
     
-    
+
     def EnableCookie(self, enableProxy):
         "Enable cookie & proxy (if needed)."
     
@@ -138,6 +143,7 @@ class WeiboLogin:
     
         print "Getting server time and nonce..."
         serverData = urllib2.urlopen(self.serverUrl).read()#得到网页内容
+        print self.serverUrl
         print serverData
     
         try:

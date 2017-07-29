@@ -25,8 +25,8 @@ class WeiboCrawler:
         proxy_file = "config/proxy.txt" 
         proxy_file = open(proxy_file, "r")
         self.proxy_list = self.LoadProxy(proxy_file)
-        self.MAX_WEIBO_PAGE = 100
-        self.MAX_COMMENT_PAGE = 100
+        self.MAX_WEIBO_PAGE = 200
+        self.MAX_COMMENT_PAGE = 200
         
     def downLoadPage(self, charset, req_url):  
         if req_url == '':
@@ -575,7 +575,8 @@ class WeiboCrawler:
         self.uid = uid
         self.weibo_name = weibo_name
         if weibo_list and uid and weibo_name:
-            crawled_wid_dict = self.load_crawled_wid(uid) #已经抓取过的weibo id
+            #crawled_wid_dict = self.load_crawled_wid(uid) #已经抓取过的weibo id
+            crawled_wid_dict = {}
             for weibo in weibo_list:
                 wid = weibo['id']
                 if wid not in crawled_wid_dict:
@@ -736,6 +737,8 @@ class WeiboCrawler:
         weibo_comment = {}
         cnt = 0
         for weibo in weibo_list:
+            if not weibo:
+                continue
             wid = weibo['id']
             if wid in weibo_comment:
                 continue
@@ -755,6 +758,7 @@ class WeiboCrawler:
         if not mid:
             return []
         cmt_list = []
+        error_cnt = 0
         page = 1
         while page < self.MAX_COMMENT_PAGE:
             req_url = 'http://weibo.com/aj/v6/comment/big?ajwvr=6&id=%s&root_comment_ext_param=&page=%d&filter=hot&filter_tips_before=1&from=singleWeiBo' % (mid, page)
@@ -762,9 +766,13 @@ class WeiboCrawler:
             try:
                 content = urllib2.urlopen(req, timeout=10).read().decode("unicode-escape")
             except:
+                traceback.print_exc()
                 time.sleep(10)
                 print 'except for:', req_url
-                page += 1
+                error_cnt += 1
+                if error_cnt > 10:
+                    continue
+                page += 2
                 continue
             div_str = content.replace('\t', '')
             div_str = div_str.replace('\r', '')
@@ -785,7 +793,9 @@ class WeiboCrawler:
                 cmt = cmt.strip().replace('\t', '')
                 cmt_list.append(cmt)
                 #print cmt
-            page += 1
+            page += 2
+            
+        cmt_list = list(set(cmt_list))
         print 'crawled', len(cmt_list), 'comment for', mid
         logger.info('crawler ' + str(len(cmt_list)) + ' comments for ' + str(mid))
         return cmt_list
@@ -815,6 +825,8 @@ class WeiboCrawler:
         fout.close()
     
     def save_user(self, weibo_cnt, cmt_cnt):
+        if not self.uid:
+            return 
         time_now = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))
         p = './output/weibo_user.dat'
         fout = open(p, 'a')

@@ -22,7 +22,7 @@ time_now = time.strftime('%Y%m%d', time.localtime(time.time()))
 lf='./log/logging_crawl_user_' + time_now + '.log'
 logger = Logger(log_level=1, logger="crawler", log_file = lf).get_logger()
 
-redis_server = redis.Redis(host = '192.168.1.101', port = 6379, db = 0)
+redis_server = redis.Redis(host = '192.168.1.100', port = 6379, db = 0)
 
 #今日热点人物
 def crawl_hot_person():

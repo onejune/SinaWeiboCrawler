@@ -86,11 +86,9 @@ def load_all_url():
 if __name__ == "__main__":
     init()
     weibo_person_list = [
-            'http://weibo.com/u/1288739185',
-            'http://weibo.com/guojingming',
-            'http://weibo.com/langxianpinghk',
-            'http://weibo.com/zhangshaohan',
-            'http://weibo.com/douxiao'
+            'http://weibo.com/u/1093897112',
+            'http://weibo.com/u/2960574121',
+            'http://weibo.com/u/1916655407'
             ]
     
     #load all bigV home url which crawled from baidu.
